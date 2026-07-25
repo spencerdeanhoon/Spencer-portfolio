@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What's in this photo?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14141c;
+    --surface: #1b1b27;
+    --surface-alt: #232335;
+    --border: #302f45;
+    --text: #ede9f5;
+    --text-muted: #8f8ba3;
+    --accent: #ffb454;
+    --accent-2: #5eead4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+  }
+  .card {
+    width: 100%;
+    max-width: 560px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px;
+    box-shadow: 0 30px 60px -30px rgba(0,0,0,0.6);
+  }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .sub { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+
+  .dropzone {
+    position: relative;
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 28px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    overflow: hidden;
+  }
+  .dropzone.drag-over { border-color: var(--accent); background: rgba(255,180,84,0.06); }
+  .dropzone input { display: none; }
+
+  .dz-label { color: var(--text-muted); font-size: 14px; }
+  .dz-label strong { color: var(--accent-2); }
+
+  .preview-wrap { display: none; }
+  .preview-wrap.show { display: block; }
+  .preview-wrap img {
+    max-width: 100%;
+    max-height: 260px;
+    border-radius: 8px;
+    display: block;
+    margin: 0 auto 16px;
+    border: 1px solid var(--border);
+  }
+
+  .scanline {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-2), transparent);
+    top: 0;
+    opacity: 0;
+  }
+  .scanline.active {
+    opacity: 1;
+    animation: scan 1.4s linear infinite;
+  }
+  @keyframes scan {
+    0% { top: 0; }
+    100% { top: 100%; }
+  }
+
+  .btn {
+    width: 100%;
+    margin-top: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 14px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: #14141c;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+  .btn:hover:not(:disabled) { transform: translateY(-2px); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    display: none;
+  }
+  .btn-secondary.show { display: block; }
+  .btn-secondary:hover { border-color: var(--accent-2); color: var(--accent-2); }
+
+  .result {
+    margin-top: 22px;
+    padding: 18px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--text);
+    display: none;
+    white-space: pre-wrap;
+  }
+  .result.show { display: block; }
+
+  .token {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  .error {
+    margin-top: 16px;
+    color: #ff8080;
+    font-size: 13px;
+    display: none;
+  }
+  .error.show { display: block; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="eyebrow">vision.js</div>
+  <h1>What's in this photo?</h1>
+  <div class="sub">Upload an image and Claude will describe what it sees.</div>
+
+  <div class="dropzone" id="dropzone">
+    <div class="scanline" id="scanline"></div>
+    <input type="file" id="fileInput" accept="image/*">
+    <div class="preview-wrap" id="previewWrap">
+      <img id="previewImg" alt="preview">
+    </div>
+    <div class="dz-label" id="dzLabel"><strong>Click to upload</strong> or drag an image here</div>
+  </div>
+
+  <button class="btn" id="describeBtn" disabled>Describe this image</button>
+
+  <div class="result" id="result"></div>
+  <button class="btn btn-secondary" id="newImageBtn">Upload a new image</button>
+  <div class="error" id="error"></div>
+</div>
+
+<script>
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const previewWrap = document.getElementById('previewWrap');
+  const previewImg = document.getElementById('previewImg');
+  const dzLabel = document.getElementById('dzLabel');
+  const describeBtn = document.getElementById('describeBtn');
+  const resultEl = document.getElementById('result');
+  const newImageBtn = document.getElementById('newImageBtn');
+  const errorEl = document.getElementById('error');
+  const scanline = document.getElementById('scanline');
+
+  let currentBase64 = null;
+  let currentMediaType = null;
+
+  dropzone.addEventListener('click', () => fileInput.click());
+
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('drag-over');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files && fileInput.files[0]) {
+      handleFile(fileInput.files[0]);
+    }
+  });
+
+  function handleFile(file) {
+    if (!file.type.startsWith('image/')) {
+      showError('Please upload an image file.');
+      return;
+    }
+    errorEl.classList.remove('show');
+    resultEl.classList.remove('show');
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      currentMediaType = file.type;
+      currentBase64 = dataUrl.split(',')[1];
+      previewImg.src = dataUrl;
+      previewWrap.classList.add('show');
+      dzLabel.textContent = file.name;
+      describeBtn.disabled = false;
+    };
+    reader.onerror = () => showError('Could not read that file. Try another image.');
+    reader.readAsDataURL(file);
+  }
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.classList.add('show');
+  }
+
+  newImageBtn.addEventListener('click', () => {
+    currentBase64 = null;
+    currentMediaType = null;
+    fileInput.value = '';
+    previewWrap.classList.remove('show');
+    previewImg.src = '';
+    dzLabel.textContent = '';
+    resultEl.classList.remove('show');
+    resultEl.textContent = '';
+    errorEl.classList.remove('show');
+    newImageBtn.classList.remove('show');
+    describeBtn.style.display = 'block';
+    describeBtn.disabled = true;
+    describeBtn.textContent = 'Describe this image';
+    const dzLabelDefault = document.createElement('div');
+    dzLabel.innerHTML = '<strong>Click to upload</strong> or drag an image here';
+  });
+
+  describeBtn.addEventListener('click', async () => {
+    if (!currentBase64) return;
+
+    describeBtn.disabled = true;
+    describeBtn.textContent = 'Looking...';
+    scanline.classList.add('active');
+    resultEl.classList.remove('show');
+    errorEl.classList.remove('show');
+
+    try {
+      const response = await fetch('/api/describe-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: currentBase64,
+          mediaType: currentMediaType
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('API request failed: ' + response.status);
+      }
+
+      const data = await response.json();
+      const text = data.description || 'No description came back — try a different image.';
+
+      resultEl.textContent = text;
+      resultEl.classList.add('show');
+      newImageBtn.classList.add('show');
+      describeBtn.style.display = 'none';
+    } catch (err) {
+      showError('Something went wrong describing that image. Please try again.');
+      console.error(err);
+    } finally {
+      describeBtn.disabled = false;
+      describeBtn.textContent = 'Describe this image';
+      scanline.classList.remove('active');
+    }
+  });
+</script>
+</body>
+</html>
